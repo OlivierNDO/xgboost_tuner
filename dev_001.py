@@ -62,6 +62,7 @@ class MissingnessIndicatorTransformer(BaseEstimator, TransformerMixin):
         return self
     
     def transform(self, target):
+        self.feature_names = []
         target_copy = target.copy()
         target_missing_ind_list = []
         missing_ind_names = []
@@ -119,9 +120,6 @@ class CategoricalTransformer(BaseEstimator, TransformerMixin):
     
     
 
-  
-
-
 class ZeroVarianceTransformer(BaseEstimator, TransformerMixin):
     """
     Removes columns in pandas.DataFrame with zero variance based on the training set.
@@ -137,11 +135,46 @@ class ZeroVarianceTransformer(BaseEstimator, TransformerMixin):
         return self
 
     def transform(self, target):
+        self.feature_names = []
         target_copy = target.copy()
         keep_cols = [c for c in target_copy.columns if c not in self.zero_variance_cols]
         self.feature_names = keep_cols
         target_copy = target_copy[keep_cols]
         return target_copy
+    
+    
+
+class CustomScalerTransformer(BaseEstimator, TransformerMixin):
+    """
+    Transform numeric variables using median and z-scores in a pandas.DataFrame
+    """
+    def __init__(self, column_statistics = {}, feature_names = []):
+        self.column_statistics = column_statistics
+        self.feature_names = feature_names
+        
+    def fit(self, target):
+        for c in target.columns:
+            self.column_statistics[c] = {'median' : np.median(target[c]), 'standard deviation' : np.std(target[c])}
+        return self
+
+    def transform(self, target):
+        target_copy = target.copy()
+        self.feature_names = []
+        for c in target_copy.columns:
+            c_median = self.column_statistics.get(c).get('median')
+            c_stdev = self.column_statistics.get(c).get('standard deviation')
+            target_copy[c] = [(x - c_median) / c_stdev for x in target_copy[c]]
+            self.feature_names.append(c)
+        return target_copy
+    
+    
+    
+    
+    
+    
+    
+    
+    
     
 
 
@@ -161,18 +194,14 @@ train_x, test_x, train_y, test_y = sklearn.model_selection.train_test_split(x, y
 
 
 
-
-
-
 # Define Pipeline
 numeric_transformer = Pipeline(steps = [('missingness', MissingnessIndicatorTransformer()),
-                                        # scaler step
-                                        ('zero variance column removal', ZeroVarianceTransformer())])
-                                        #('scaler', StandardScaler()),
-                                        #
+                                        ('zero variance column removal', ZeroVarianceTransformer()),
+                                        ('custom scaler', CustomScalerTransformer())])
     
 
-categorical_transformer = Pipeline(steps = [('custom categorical encoder', CategoricalTransformer())])
+categorical_transformer = Pipeline(steps = [('custom categorical encoder', CategoricalTransformer()),
+                                            ('zero variance column removal', ZeroVarianceTransformer())])
 
 preprocessor = ColumnTransformer(transformers=[('num', numeric_transformer, config_contin_x_cols),
                                                ('cat', categorical_transformer, config_categ_x_cols)],
@@ -203,22 +232,17 @@ train_x = pd.DataFrame(train_x, columns = feature_name_list)
 
 
 
-miss_cols = [c for c in train_x.columns if 'Missing' in c]
-miss_cols
-
-
-np.mean(train_x['IBS_CREDIT_SCORE_NUMBER_Missing'])
-
-np.mean(test_x['IBS_CREDIT_SCORE_NUMBER_Missing'])
-
-
 
 ### TO DO
 ######################################################################################################
 # transformer for response variable
-# combined transformer/pipeline object
+# single pipeline class
+# serialize pipeline (https://stackoverflow.com/questions/57888291/how-to-properly-pickle-sklearn-pipeline-when-using-custom-transformer)
+# create pipeline module
+# create configuration script
 # start xgbtuner
-
+# write unit tests
+# Work on docstrings
 
 
 
