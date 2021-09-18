@@ -6,6 +6,7 @@ import itertools
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import pickle
 import seaborn as sns
 import sklearn
 from sklearn.preprocessing import StandardScaler, PowerTransformer, OneHotEncoder
@@ -38,6 +39,14 @@ config_contin_x_cols = ['IBS_CREDIT_SCORE_NUMBER', 'ADDRESS_YEARS', 'EMPLOYED_YE
                         '0_3_MAJOR', '3_5_MAJOR', '0_3_MINOR', '3_5_MINOR', 'OPERATOR_AGE', 'VEH_ISO_LIAB_SYM']
 
 config_x_cols = config_categ_x_cols + config_contin_x_cols
+
+
+### Filename & Directory Configuration
+######################################################################################################
+config_parent_directory = 'D:/xgboost_tuner/'
+config_model_save_dir = f'{config_parent_directory}saved_models/'
+config_pipeline_save_path = f'{config_model_save_dir}transformation_pipeline.pkl'
+
 
 
 ### Define Functions
@@ -162,7 +171,7 @@ class CustomScalerTransformer(BaseEstimator, TransformerMixin):
         self.feature_names = feature_names
         
     def __str__(self):
-        return 'ZeroVarianceTransformer'
+        return 'CustomScalerTransformer'
         
     def fit(self, target):
         for c in target.columns:
@@ -209,8 +218,7 @@ class FeatureTransformer:
         self.pipeline_save_path = pipeline_save_path
         self.numeric_transformers = numeric_transformers
         self.categorical_transformers = categorical_transformers
-        
-        
+            
     def __str__(self):
         return 'FeatureTransformer'
         
@@ -232,8 +240,23 @@ class FeatureTransformer:
                                          remainder = 'passthrough')
         pipeline = Pipeline(steps = [('preprocessor', preprocessor)])
         return pipeline
+    
+    def get_missing_train_cols(self):
+        x_cols = self.numeric_columns + self.categorical_columns
+        missing_cols = [xc for xc in x_cols if xc not in self.train_df.columns]
+        return missing_cols
+    
+    def get_missing_test_cols(self):
+        x_cols = self.numeric_columns + self.categorical_columns
+        missing_cols = [xc for xc in x_cols if xc not in self.test_df.columns]
+        return missing_cols
         
-    def process_train_test(self):
+    def process_train_test_features(self):
+        # Assertions
+        assert self.test_df is not None, 'Error: Parameter test_df cannot be None when calling method process_train_test_features()'
+        assert len(self.get_missing_train_cols()) == 0, f"Columns missing from training set: {self.get_missing_train_cols()}"
+        assert len(self.get_missing_test_cols()) == 0, f"Columns missing from test set: {self.get_missing_test_cols()}"
+        
         # Define Transformation Pipeline
         numeric_transformer = self.make_numeric_transformer()
         categorical_transformer = self.make_categorical_transformer()
@@ -241,7 +264,6 @@ class FeatureTransformer:
                                                        ('cat', categorical_transformer, self.categorical_columns)],
                                          remainder = 'passthrough')
         pipeline = Pipeline(steps = [('preprocessor', preprocessor)])
-        
         
         # Apply Transformation to Train & Test
         x_cols = [c for c in self.train_df.columns if c in (self.numeric_columns + self.categorical_columns)]
@@ -258,21 +280,28 @@ class FeatureTransformer:
         
         return train_x, test_x
         
-        
-        
-        
-        
+    
     def save_pipeline(self):
-        print("TO DO")
+        # Assertions
+        assert len(self.get_missing_train_cols()) == 0, f"Columns missing from training set: {self.get_missing_train_cols()}"
+        assert self.pipeline_save_path is not None, 'Argument pipeline_save_path must be a string, not None type'
         
-    
-    # TO DO: use __str__ methods to construct sequential Column Transformer
-    
-    
-    
-    
-    
-    
+        # Define Transformation Pipeline
+        numeric_transformer = self.make_numeric_transformer()
+        categorical_transformer = self.make_categorical_transformer()
+        preprocessor = ColumnTransformer(transformers=[('num', numeric_transformer, self.numeric_columns),
+                                                       ('cat', categorical_transformer, self.categorical_columns)],
+                                         remainder = 'passthrough')
+        pipeline = Pipeline(steps = [('preprocessor', preprocessor)])
+        
+        # Apply Transformation to Train & Test
+        x_cols = [c for c in self.train_df.columns if c in (self.numeric_columns + self.categorical_columns)]
+        pipeline.fit(self.train_df[x_cols])
+        with open(self.pipeline_save_path, 'wb') as f:
+            pickle.dump(pipeline, f)
+            print(f'sklearn.Pipeline object saved to {self.pipeline_save_path}')
+        
+
 
 
 
@@ -286,68 +315,19 @@ y = df[config_y_col]
 
 
 # Split into Test & Train
-train_x, test_x, train_y, test_y = sklearn.model_selection.train_test_split(x, y, test_size = 0.2, random_state = 912)
-
 train, test = sklearn.model_selection.train_test_split(df, test_size = 0.2, random_state = 912)
-
 
 
 transformer = FeatureTransformer(train_df = train,
                                  test_df = test,
                                  numeric_columns = config_contin_x_cols,
-                                 categorical_columns = config_categ_x_cols)
-
-train_x, test_x  = transformer.process_train_test()
-
-pipeline = transformer.get_pipeline()
-train_x = pipeline.fit_transform(train_x)
-test_x = pipeline.transform(test_x)
+                                 categorical_columns = config_categ_x_cols,
+                                 pipeline_save_path = config_pipeline_save_path)
 
 
+train_x, test_x  = transformer.process_train_test_features()
 
-
-feature_name_list = []
-
-for i, transf in enumerate(pipeline.transformers_):
-    last_transf_step = transf[1].steps[-1][1]
-    feature_name_list = feature_name_list + last_transf_step.feature_names
-
-
-
-# Define Pipeline
-numeric_transformer = Pipeline(steps = [('missingness', MissingnessIndicatorTransformer()),
-                                        ('zero variance column removal', ZeroVarianceTransformer()),
-                                        ('custom scaler', CustomScalerTransformer())])
-    
-
-categorical_transformer = Pipeline(steps = [('custom categorical encoder', CategoricalTransformer()),
-                                            ('zero variance column removal', ZeroVarianceTransformer())])
-
-preprocessor = ColumnTransformer(transformers=[('num', numeric_transformer, config_contin_x_cols),
-                                               ('cat', categorical_transformer, config_categ_x_cols)],
-                                 remainder = 'passthrough')
-    
-
-    
-pipeline = Pipeline(steps = [('preprocessor', preprocessor)])
-
-train_x = pipeline.fit_transform(train_x)
-test_x = pipeline.transform(test_x)
-
-
-# Get Feature Names
-
-
-
-feature_name_list = []
-
-for i, transf in enumerate(preprocessor.transformers_):
-    last_transf_step = transf[1].steps[-1][1]
-    feature_name_list = feature_name_list + last_transf_step.feature_names
-
-test_x = pd.DataFrame(test_x, columns = feature_name_list)
-
-train_x = pd.DataFrame(train_x, columns = feature_name_list)
+transformer.save_pipeline()
 
 
 
@@ -366,39 +346,4 @@ train_x = pd.DataFrame(train_x, columns = feature_name_list)
 # start xgbtuner
 # write unit tests
 # Work on docstrings
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
