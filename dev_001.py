@@ -67,8 +67,6 @@ class MissingnessIndicatorTransformer(BaseEstimator, TransformerMixin):
         target_missing_ind_list.append(col_c_indicator)
     target_missing_ind = pd.concat(target_missing_ind_list, axis = 1)
     output_copy = pd.concat([target_copy.fillna(0).reset_index(drop=True), target_missing_ind.reset_index(drop=True)], axis = 1)
-    print(f'output shape: {output_copy.shape[0]})')
-    
     return output_copy
 
 
@@ -110,6 +108,21 @@ class CategoricalTransformer(BaseEstimator, TransformerMixin):
               one_hot_df_list.append(encoded_values)
       target_copy = pd.concat(one_hot_df_list, axis = 1)
       return target_copy
+  
+  def get_feature_names(self):
+      one_hot_cols = list(set(self.column_value_counts.keys()))
+      feature_list = []
+      for ohc in one_hot_cols:
+          ohc_dict = self.column_value_counts.get(ohc)
+          
+          # Remove reference level (max frequency categorical level)
+          ohc_keys = list(ohc_dict.keys())
+          ohc_values = list(ohc_dict.values())
+          use_levels = [ohc_keys for _, ohc_keys in sorted(zip(ohc_values, ohc_keys))][:-1]
+          for level in use_levels:
+              feature_list.append(f'{ohc}_{level}')
+      return feature_list
+    
 
 
 
@@ -144,6 +157,166 @@ class LowVarianceTransformer(BaseEstimator, TransformerMixin):
 df = pd.read_csv(f'{config_folder_path}{config_train_file_name}')
 x = df[config_x_cols]
 y = df[config_y_col]
+
+
+
+
+temp = CategoricalTransformer()
+temp.fit(x[config_categ_x_cols])
+
+temp.get_feature_names()
+
+
+# Define Pipeline
+numeric_transformer = Pipeline(steps = [('missingness', MissingnessIndicatorTransformer())])#,
+                                        #('scaler', StandardScaler()),
+                                        #('zero variance column removal', LowVarianceTransformer())])
+    
+
+categorical_transformer = Pipeline(steps = [('custom categorical encoder', CategoricalTransformer())])
+
+preprocessor = ColumnTransformer(transformers=[('num', numeric_transformer, config_contin_x_cols),
+                                               ('cat', categorical_transformer, config_categ_x_cols)],
+                                 remainder = 'passthrough')
+    
+
+    
+pipeline = Pipeline(steps = [('preprocessor', preprocessor)])
+
+
+
+
+train_x, test_x, train_y, test_y = sklearn.model_selection.train_test_split(x, y, test_size = 0.2, random_state = 912)
+
+#pipeline.fit(train_x)
+train_x = pipeline.fit_transform(train_x)
+test_x = pipeline.transform(test_x)
+
+
+
+preprocessor.named_transformers_['cat']
+
+
+
+def get_column_names_from_ColumnTransformer(column_transformer):    
+    col_name = []
+
+    for transformer_in_columns in column_transformer.transformers_[:-1]: #the last transformer is ColumnTransformer's 'remainder'
+        print('\n\ntransformer: ', transformer_in_columns[0])
+        
+        raw_col_name = list(transformer_in_columns[2])
+        
+        if isinstance(transformer_in_columns[1], Pipeline): 
+            # if pipeline, get the last transformer
+            transformer = transformer_in_columns[1].steps[-1][1]
+        else:
+            transformer = transformer_in_columns[1]
+            
+        try:
+          if isinstance(transformer, OneHotEncoder):
+            names = list(transformer.get_feature_names(raw_col_name))
+            
+          elif isinstance(transformer, SimpleImputer) and transformer.add_indicator:
+            missing_indicator_indices = transformer.indicator_.features_
+            missing_indicators = [raw_col_name[idx] + '_missing_flag' for idx in missing_indicator_indices]
+
+            names = raw_col_name + missing_indicators
+            
+          else:
+            names = list(transformer.get_feature_names())
+          
+        except AttributeError as error:
+          names = raw_col_name
+        
+        print(names)    
+        
+        col_name.extend(names)
+            
+    return col_name
+
+
+
+
+get_column_names_from_ColumnTransformer(preprocessor)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+name, estimator, features = preprocessor.transformers_[1]
+
+
+
+
+def get_feature_out(estimator, feature_in):
+    if hasattr(estimator,'get_feature_names'):
+        if isinstance(estimator, _VectorizerMixin):
+            # handling all vectorizers
+            return [f'vec_{f}' \
+                for f in estimator.get_feature_names()]
+        else:
+            return estimator.get_feature_names(feature_in)
+    elif isinstance(estimator, SelectorMixin):
+        return np.array(feature_in)[estimator.get_support()]
+    else:
+        return feature_in
+
+
+def get_ct_feature_names(ct):
+    # handles all estimators, pipelines inside ColumnTransfomer
+    # doesn't work when remainder =='passthrough'
+    # which requires the input column names.
+    output_features = []
+
+    for name, estimator, features in ct.transformers_:
+        if name!='remainder':
+            if isinstance(estimator, Pipeline):
+                current_features = features
+                for step in estimator:
+                    current_features = get_feature_out(step, current_features)
+                features_out = current_features
+            else:
+                features_out = get_feature_out(estimator, features)
+            output_features.extend(features_out)
+        elif estimator=='passthrough':
+            output_features.extend(ct._feature_names_in[features])
+                
+    return output_features
+
+pd.DataFrame(train_x, columns = get_ct_feature_names(preprocessor))
+
+
+
+
+
+
+
+
+
+
+preprocessor.get_feature_names()
+
+
+
+pipeline['preprocessor']
+
+
+
+
+
+
+
+
 
 
 # Define Pipeline
