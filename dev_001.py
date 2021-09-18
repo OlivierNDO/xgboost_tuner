@@ -54,6 +54,9 @@ class MissingnessIndicatorTransformer(BaseEstimator, TransformerMixin):
     def __init__(self, feature_names = []):
         self.feature_names = feature_names
         
+    def __str__(self):
+        return 'MissingnessIndicatorTransformer'
+        
     @staticmethod
     def binary_missingness(iterable):
         return [1 if (np.isnan(x) or np.isinf(x)) else 0 for x in iterable]
@@ -89,6 +92,9 @@ class CategoricalTransformer(BaseEstimator, TransformerMixin):
     def __init__(self, column_value_counts = {}, feature_names = []):
         self.column_value_counts = column_value_counts
         self.feature_names = feature_names
+        
+    def __str__(self):
+        return 'CategoricalTransformer'
       
     def fit(self, target):
         for column in target.columns:
@@ -130,6 +136,9 @@ class ZeroVarianceTransformer(BaseEstimator, TransformerMixin):
         self.zero_variance_cols = zero_variance_cols
         self.feature_names = feature_names
         
+    def __str__(self):
+        return 'ZeroVarianceTransformer'
+        
     def fit(self, target):
         self.zero_variance_cols = [c for c in target.columns if len(np.unique(target[c])) == 1]
         return self
@@ -152,6 +161,9 @@ class CustomScalerTransformer(BaseEstimator, TransformerMixin):
         self.column_statistics = column_statistics
         self.feature_names = feature_names
         
+    def __str__(self):
+        return 'ZeroVarianceTransformer'
+        
     def fit(self, target):
         for c in target.columns:
             self.column_statistics[c] = {'median' : np.median(target[c]), 'standard deviation' : np.std(target[c])}
@@ -168,8 +180,93 @@ class CustomScalerTransformer(BaseEstimator, TransformerMixin):
         return target_copy
     
     
+
+class FeatureTransformer:
+    """
+    Transform x and y features in a pandas.DataFrame using sklearn.ColumnTransformer
+    and sklearn.Pipeline objects. This class serves as a wrapper around
+    the following classes:
+        > MissingnessIndicatorTransformer()
+        > CategoricalTransformer()
+        > ZeroVarianceTransformer()
+        > CustomScalerTransformer()
+    """
+    def __init__(self,
+                 numeric_columns : list,
+                 categorical_columns : list,
+                 train_df : pd.DataFrame,
+                 test_df = None,
+                 pipeline_save_path = None,
+                 numeric_transformers = [MissingnessIndicatorTransformer(),
+                                         ZeroVarianceTransformer(),
+                                         CustomScalerTransformer()],
+                 categorical_transformers = [CategoricalTransformer(),
+                                             ZeroVarianceTransformer()]):
+        self.numeric_columns = numeric_columns
+        self.categorical_columns = categorical_columns
+        self.train_df = train_df
+        self.test_df = test_df
+        self.pipeline_save_path = pipeline_save_path
+        self.numeric_transformers = numeric_transformers
+        self.categorical_transformers = categorical_transformers
+        
+        
+    def __str__(self):
+        return 'FeatureTransformer'
+        
+    def make_numeric_transformer(self):
+        steps = [(transformer.__str__(), transformer) for transformer in self.numeric_transformers]
+        numeric_transformer = Pipeline(steps = steps)
+        return numeric_transformer
     
+    def make_categorical_transformer(self):
+        steps = [(transformer.__str__(), transformer) for transformer in self.categorical_transformers]
+        categorical_transformer = Pipeline(steps = steps)
+        return categorical_transformer
     
+    def get_pipeline(self):
+        numeric_transformer = self.make_numeric_transformer()
+        categorical_transformer = self.make_categorical_transformer()
+        preprocessor = ColumnTransformer(transformers=[('num', numeric_transformer, self.numeric_columns),
+                                                       ('cat', categorical_transformer, self.categorical_columns)],
+                                         remainder = 'passthrough')
+        pipeline = Pipeline(steps = [('preprocessor', preprocessor)])
+        return pipeline
+        
+    def process_train_test(self):
+        # Define Transformation Pipeline
+        numeric_transformer = self.make_numeric_transformer()
+        categorical_transformer = self.make_categorical_transformer()
+        preprocessor = ColumnTransformer(transformers=[('num', numeric_transformer, self.numeric_columns),
+                                                       ('cat', categorical_transformer, self.categorical_columns)],
+                                         remainder = 'passthrough')
+        pipeline = Pipeline(steps = [('preprocessor', preprocessor)])
+        
+        
+        # Apply Transformation to Train & Test
+        x_cols = [c for c in self.train_df.columns if c in (self.numeric_columns + self.categorical_columns)]
+        train_x = pipeline.fit_transform(self.train_df[x_cols])
+        test_x = pipeline.transform(self.test_df[x_cols])
+        
+        # Retrieve Feature Names from Preprocessor
+        feature_name_list = []
+        for i, transf in enumerate(preprocessor.transformers_):
+            last_transf_step = transf[1].steps[-1][1]
+            feature_name_list = feature_name_list + last_transf_step.feature_names
+        train_x = pd.DataFrame(train_x, columns = feature_name_list)
+        test_x = pd.DataFrame(test_x, columns = feature_name_list)
+        
+        return train_x, test_x
+        
+        
+        
+        
+        
+    def save_pipeline(self):
+        print("TO DO")
+        
+    
+    # TO DO: use __str__ methods to construct sequential Column Transformer
     
     
     
@@ -191,6 +288,29 @@ y = df[config_y_col]
 # Split into Test & Train
 train_x, test_x, train_y, test_y = sklearn.model_selection.train_test_split(x, y, test_size = 0.2, random_state = 912)
 
+train, test = sklearn.model_selection.train_test_split(df, test_size = 0.2, random_state = 912)
+
+
+
+transformer = FeatureTransformer(train_df = train,
+                                 test_df = test,
+                                 numeric_columns = config_contin_x_cols,
+                                 categorical_columns = config_categ_x_cols)
+
+train_x, test_x  = transformer.process_train_test()
+
+pipeline = transformer.get_pipeline()
+train_x = pipeline.fit_transform(train_x)
+test_x = pipeline.transform(test_x)
+
+
+
+
+feature_name_list = []
+
+for i, transf in enumerate(pipeline.transformers_):
+    last_transf_step = transf[1].steps[-1][1]
+    feature_name_list = feature_name_list + last_transf_step.feature_names
 
 
 
@@ -216,6 +336,9 @@ test_x = pipeline.transform(test_x)
 
 
 # Get Feature Names
+
+
+
 feature_name_list = []
 
 for i, transf in enumerate(preprocessor.transformers_):
