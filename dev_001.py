@@ -122,9 +122,9 @@ class CategoricalTransformer(BaseEstimator, TransformerMixin):
   
 
 
-class LowVarianceTransformer(BaseEstimator, TransformerMixin):
+class ZeroVarianceTransformer(BaseEstimator, TransformerMixin):
     """
-    Removes columns in numpy array with zero variance based on the training set.
+    Removes columns in pandas.DataFrame with zero variance based on the training set.
     This is necessary after missingness indicators are created for
     every column - including columns without missing values.
     """
@@ -133,21 +133,16 @@ class LowVarianceTransformer(BaseEstimator, TransformerMixin):
         self.feature_names = feature_names
         
     def fit(self, target):
-        self.zero_variance_cols = [i for i in list(range(target.shape[1])) if len(np.unique(target[:,i])) == 1]
-        #self.zero_variance_cols = [i for c in target.columns if len(np.unique(target[c])) == 1]
+        self.zero_variance_cols = [c for c in target.columns if len(np.unique(target[c])) == 1]
         return self
 
     def transform(self, target):
         target_copy = target.copy()
-        keep_cols = [c for c in list(range(target.shape[1])) if c not in self.zero_variance_cols]
+        keep_cols = [c for c in target_copy.columns if c not in self.zero_variance_cols]
         self.feature_names = keep_cols
-        target_copy = target_copy[:, keep_cols]
+        target_copy = target_copy[keep_cols]
         return target_copy
     
-#    def get_feature_names(self, target)
-
-
-
 
 
 
@@ -164,10 +159,17 @@ y = df[config_y_col]
 train_x, test_x, train_y, test_y = sklearn.model_selection.train_test_split(x, y, test_size = 0.2, random_state = 912)
 
 
+
+
+
+
+
 # Define Pipeline
-numeric_transformer = Pipeline(steps = [('missingness', MissingnessIndicatorTransformer())])#,
+numeric_transformer = Pipeline(steps = [('missingness', MissingnessIndicatorTransformer()),
+                                        # scaler step
+                                        ('zero variance column removal', ZeroVarianceTransformer())])
                                         #('scaler', StandardScaler()),
-                                        #('zero variance column removal', LowVarianceTransformer())])
+                                        #
     
 
 categorical_transformer = Pipeline(steps = [('custom categorical encoder', CategoricalTransformer())])
@@ -197,6 +199,17 @@ train_x = pd.DataFrame(train_x, columns = feature_name_list)
 
 
 
+
+
+
+
+miss_cols = [c for c in train_x.columns if 'Missing' in c]
+miss_cols
+
+
+np.mean(train_x['IBS_CREDIT_SCORE_NUMBER_Missing'])
+
+np.mean(test_x['IBS_CREDIT_SCORE_NUMBER_Missing'])
 
 
 
