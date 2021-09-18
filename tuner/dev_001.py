@@ -37,7 +37,6 @@ import tuner.utils.configuration as config
 
 
 
-
 ### Execute
 ######################################################################################################
 # Read Data
@@ -47,19 +46,25 @@ df = pd.read_csv(f'{config.folder_path}{config.train_file_name}')
 # Split into Test & Train
 train, test = sklearn.model_selection.train_test_split(df, test_size = 0.2, random_state = 912)
 
+# Transform Predictor Features
+feature_pipeline = trans_mod.FeaturePipeline(train_df = train,
+                                                   test_df = test,
+                                                   numeric_columns = config.contin_x_cols,
+                                                   categorical_columns = config.categ_x_cols,
+                                                   pipeline_save_path = config.feature_pipeline_save_path)
 
-transformer = trans_mod.FeatureTransformer(train_df = train,
-                                           test_df = test,
-                                           numeric_columns = config.contin_x_cols,
-                                           categorical_columns = config.categ_x_cols,
-                                           pipeline_save_path = config.pipeline_save_path)
-
-
-train_x, test_x  = transformer.process_train_test_features()
-
-transformer.save_pipeline()
+train_x, test_x  = feature_pipeline.process_train_test_features()
+feature_pipeline.save_pipeline()
 
 
+# Transform Response Variable
+response_pipeline = trans_mod.ResponsePipeline(train_df = train,
+                                               test_df = test,
+                                               response_column = config.y_col,
+                                               pipeline_save_path = config.response_pipeline_save_path)
+
+train_y, test_y  = response_pipeline.process_train_test_response()
+response_pipeline.save_pipeline()
 
 
 
@@ -68,11 +73,6 @@ transformer.save_pipeline()
 
 ### TO DO
 ######################################################################################################
-# transformer for response variable
-# single pipeline class
-# serialize pipeline (https://stackoverflow.com/questions/57888291/how-to-properly-pickle-sklearn-pipeline-when-using-custom-transformer)
-# create pipeline module
-# create configuration script
 # start xgbtuner
 # write unit tests
 # Work on docstrings

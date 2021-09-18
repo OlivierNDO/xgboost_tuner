@@ -22,4 +22,5 @@ train_file_name = 'retention_sample.csv'
 ######################################################################################################
 parent_directory = 'D:/xgboost_tuner/'
 model_save_dir = f'{parent_directory}saved_models/'
-pipeline_save_path = f'{model_save_dir}transformation_pipeline.pkl'
+feature_pipeline_save_path = f'{model_save_dir}feature_transformation_pipeline.pkl'
+response_pipeline_save_path = f'{model_save_dir}response_transformation_pipeline.pkl'

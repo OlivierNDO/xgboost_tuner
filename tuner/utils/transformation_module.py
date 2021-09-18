@@ -152,9 +152,79 @@ class CustomScalerTransformer(BaseEstimator, TransformerMixin):
     
     
 
-class FeatureTransformer:
+class ResponseTransformer(BaseEstimator, TransformerMixin):
     """
-    Transform x and y features in a pandas.DataFrame using sklearn.ColumnTransformer
+    Transform pandas.Series response variable to a set of integers
+    (if needed) for xgboost modelling
+    """
+    def __init__(self, class_dictionary = {}):
+        self.class_dictionary = class_dictionary
+        
+    def __str__(self):
+        return 'ResponseTransformer'
+        
+    def fit(self, target):
+        if pd.api.types.is_string_dtype(target):
+            unique_values = list(np.unique(target))
+            integer_elements = list(range(len(unique_values)))
+            self.class_dictionary = dict(zip(unique_values, integer_elements))
+        else:
+            unique_values = list(np.unique(target))
+            self.class_dictionary = dict(zip(unique_values, unique_values))
+        return self
+    
+    def transform(self, target):
+        return_target = pd.DataFrame({target.name : [self.class_dictionary.get(x) for x in target]})
+        return return_target
+    
+    
+    
+
+class ResponsePipeline:
+    """
+    Wrapper around ResponseTransformer class intended to transform
+    pandas.Series response variable to a set of integers (if needed)
+    for xgboost modelling
+    """
+    def __init__(self,
+                 response_column : str,
+                 train_df : pd.DataFrame,
+                 test_df = None,
+                 pipeline_save_path = None):
+        self.response_column = response_column
+        self.train_df = train_df
+        self.test_df = test_df 
+        self.pipeline_save_path = pipeline_save_path
+        
+        
+    def __str__(self):
+        return 'ResponsePipeline'
+        
+    def process_train_test_response(self):
+        # Assertions
+        assert self.test_df is not None, 'Error: Parameter test_df cannot be None when calling method process_train_test_features()'
+        assert self.response_column in self.train_df.columns, f"Column {self.respones_column} missing from training set"
+        assert self.response_column in self.test_df.columns, f"Column {self.respones_column} missing from test set"
+        
+        # Define & Apply Transformation Pipeline
+        response_transformer = ResponseTransformer()
+        train_y = response_transformer.fit_transform(self.train_df[self.response_column])
+        test_y = response_transformer.transform(self.test_df[self.response_column])
+        return train_y, test_y
+    
+    def save_pipeline(self):
+        response_transformer = ResponseTransformer()
+        response_transformer.fit(self.train_df[self.response_column])
+        with open(self.pipeline_save_path, 'wb') as f:
+            pickle.dump(response_transformer, f)
+            print(f'sklearn.Pipeline object saved to {self.pipeline_save_path}')
+    
+    
+    
+
+class FeaturePipeline:
+    """
+    Transform predictor features in a pandas.DataFrame using sklearn.ColumnTransformer
     and sklearn.Pipeline objects. This class serves as a wrapper around
     the following classes:
         > MissingnessIndicatorTransformer()
@@ -182,7 +252,7 @@ class FeatureTransformer:
         self.categorical_transformers = categorical_transformers
             
     def __str__(self):
-        return 'FeatureTransformer'
+        return 'FeaturePipeline'
         
     def make_numeric_transformer(self):
         steps = [(transformer.__str__(), transformer) for transformer in self.numeric_transformers]
@@ -255,7 +325,7 @@ class FeatureTransformer:
                                          remainder = 'passthrough')
         pipeline = Pipeline(steps = [('preprocessor', preprocessor)])
         
-        # Apply Transformation to Train & Test
+        # Fit Pipeline on Training Set & Save to pkl File
         x_cols = [c for c in self.train_df.columns if c in (self.numeric_columns + self.categorical_columns)]
         pipeline.fit(self.train_df[x_cols])
         with open(self.pipeline_save_path, 'wb') as f:
