@@ -73,6 +73,7 @@ response_pipeline.save_pipeline()
 
 ### TO DO
 ######################################################################################################
+# response pipeline for continuous?
 # start xgbtuner
 # write unit tests
 # Work on docstrings
