@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pickle
 import sklearn
-from sklearn.preprocessing import StandardScaler, PowerTransformer, OneHotEncoder
+from sklearn.preprocessing import StandardScaler, PowerTransformer, OneHotEncoder, MinMaxScaler
 from sklearn.compose import TransformedTargetRegressor, ColumnTransformer
 from sklearn.pipeline import FeatureUnion, Pipeline, make_pipeline
 from sklearn.base import BaseEstimator, TransformerMixin
@@ -45,6 +45,8 @@ class MissingnessIndicatorTransformer(BaseEstimator, TransformerMixin):
             missing_ind_names.append(f'{c}_Missing')
             target_missing_ind_list.append(col_c_indicator)
         target_missing_ind = pd.concat(target_missing_ind_list, axis = 1)
+        # new
+        target_copy.replace([np.inf, -np.inf], np.nan, inplace=True)
         output_copy = pd.concat([target_copy.fillna(0).reset_index(drop=True), target_missing_ind.reset_index(drop=True)], axis = 1)
         self.feature_names = list(target_copy.columns) + missing_ind_names
         return output_copy
@@ -57,7 +59,7 @@ class CategoricalTransformer(BaseEstimator, TransformerMixin):
     the test set has values not found in the training set. Columns
     returned will exclude a single reference level. e.g.
     if a pandas.DataFrame with column 'X' and values 'A', 'B', and 'C'
-    is passed where frequencies of 'A', 'B', and 'C' and 500, 250, and 250,
+    is passed where frequencies of 'A', 'B', and 'C' are 500, 250, and 250,
     respectively, binary columns 'X_B' and 'X_C' will be returned.
     """
     def __init__(self, column_value_counts = {}, feature_names = []):
@@ -126,7 +128,7 @@ class ZeroVarianceTransformer(BaseEstimator, TransformerMixin):
 
 class CustomScalerTransformer(BaseEstimator, TransformerMixin):
     """
-    Transform numeric variables using median and z-scores in a pandas.DataFrame
+    Scale numeric variables using median and z-scores in a pandas.DataFrame
     """
     def __init__(self, column_statistics = {}, feature_names = []):
         self.column_statistics = column_statistics
@@ -151,6 +153,100 @@ class CustomScalerTransformer(BaseEstimator, TransformerMixin):
         return target_copy
     
     
+
+class PolynomialTransformer(BaseEstimator, TransformerMixin):
+    """
+    Removes columns in pandas.DataFrame with zero variance based on the training set.
+    This is necessary after missingness indicators are created for
+    every column - including columns without missing values.
+    
+    Args:
+        feature_power_dict: dictionary formatted  as {column_name : exponential power}
+    
+    Example Usage:
+        example_df = pd.DataFrame({'x1' : [10, 20, 30], 'x2' : [3, 6, 9]})
+        poly_transformer = PolynomialTransformer(feature_power_dict = {'x1' : 2, 'x2' : 3})
+        poly_transformer.fit_transform(example_df)
+        
+           x1  x2  x1_power2  x2_power2  x2_power3
+        0  10   3        100          9         27
+        1  20   6        400         36        216
+        2  30   9        900         81        729
+    """
+    def __init__(self, feature_power_dict):
+        self.feature_power_dict = feature_power_dict
+        
+    def __str__(self):
+        return 'PolynomialTransformer'
+
+    def fit(self, target):
+        return self
+
+    def transform(self, target):
+        target_copy = target.copy()
+        for c in target_copy.columns:
+            c_powers = range(2, self.feature_power_dict.get(c) + 1)
+            for cp in c_powers:
+                target_copy[f'{c}_power{cp}'] = [x ** cp for x in target_copy[c]]
+        return target_copy
+
+
+
+class LogNormTransformer(BaseEstimator, TransformerMixin):
+    """
+    Scale features to 0 -> 1 range before applying log(x+1) to each numeric value
+    """
+    def __init__(self, scaler = MinMaxScaler()):
+        self.scaler = scaler
+        
+    def __str__(self):
+        return 'LogNormTransformer'
+
+    def fit(self, target):
+        self.scaler.fit(target)
+        return self
+
+    def transform(self, target):
+        target_copy = target.copy()
+        target_copy = pd.DataFrame(self.scaler.transform(target_copy), columns = target.columns)
+        for c in target_copy.columns:
+            target_copy[c] = [np.log(x + 1) for x in target_copy[c]]
+        return target_copy
+
+
+
+class InteractionTransformer(BaseEstimator, TransformerMixin):
+    """
+    Create interaction features via multiplication
+    Args:
+        interaction_list: list of tuples with column name interactions
+    Example Usage:
+        example_df = pd.DataFrame({'x1' : [10, 20, 30], 'x2' : [3, 6, 9], 'x3' : [5, 10, 20]})
+        intx_tran = InteractionTransformer(interaction_list = [('x1', 'x2'), ('x1', 'x3')])
+        intx_tran.fit_transform(example_df)
+        
+           x1  x2  x3  x1_X_x2  x1_X_x3
+        0  10   3   5       30       50
+        1  20   6  10      120      200
+        2  30   9  20      270      600
+        
+    """
+    def __init__(self, interaction_list):
+        self.interaction_list = interaction_list
+        
+    def __str__(self):
+        return 'InteractionTransformer'
+
+    def fit(self, target):
+        return self
+
+    def transform(self, target):
+        target_copy = target.copy()       
+        for intx in self.interaction_list:
+            target_copy[f'{intx[0]}_X_{intx[1]}'] = target_copy[intx[0]] * target_copy[intx[1]]
+        return target_copy
+    
+
 
 class ResponseTransformer(BaseEstimator, TransformerMixin):
     """

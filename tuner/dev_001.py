@@ -10,7 +10,7 @@ import pandas as pd
 import pickle
 import seaborn as sns
 import sklearn
-from sklearn.preprocessing import StandardScaler, PowerTransformer, OneHotEncoder
+from sklearn.preprocessing import StandardScaler, PowerTransformer, OneHotEncoder, MinMaxScaler
 from sklearn.compose import TransformedTargetRegressor, ColumnTransformer
 from sklearn.pipeline import FeatureUnion, Pipeline, make_pipeline
 from sklearn.base import BaseEstimator, TransformerMixin
@@ -46,6 +46,15 @@ df = pd.read_csv(f'{config.folder_path}{config.train_file_name}')
 # Split into Test & Train
 train, test = sklearn.model_selection.train_test_split(df, test_size = 0.2, random_state = 912)
 
+
+
+
+
+
+
+
+
+
 # Transform Predictor Features
 feature_pipeline = trans_mod.FeaturePipeline(train_df = train,
                                                    test_df = test,
@@ -73,8 +82,28 @@ response_pipeline.save_pipeline()
 
 ### TO DO
 ######################################################################################################
+
+"""    
 # response pipeline for continuous?
 # start xgbtuner
 # write unit tests
 # Work on docstrings
+
+
+"""
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
