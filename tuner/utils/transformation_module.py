@@ -420,8 +420,42 @@ class FeaturePipeline:
         # Remove Duplicate Columns
         train_x = train_x.loc[:,~train_x.columns.duplicated()]
         test_x = test_x.loc[:,~test_x.columns.duplicated()]
+        return train_x, test_x
+    
+    def process_train_test_valid_features(self):
+        # Assertions
+        assert self.test_df is not None, 'Error: Parameter test_df cannot be None when calling method process_train_test_features()'
+        assert self.valid_df is not None, 'Error: Parameter valid_df cannot be None when calling method process_train_test_features()'
+        assert len(self.get_missing_train_cols()) == 0, f"Columns missing from training set: {self.get_missing_train_cols()}"
+        assert len(self.get_missing_test_cols()) == 0, f"Columns missing from test set: {self.get_missing_test_cols()}"
         
-        return 
+        # Define Transformation Pipeline
+        preprocessor = ColumnTransformer(transformers=[('num', self.make_transformer_pipeline(transformer_list = self.numeric_transformers), self.numeric_columns),
+                                                       ('cat', self.make_transformer_pipeline(transformer_list = self.categorical_transformers), self.categorical_columns)],
+                                         remainder = 'passthrough')
+        pipeline = Pipeline(steps = [('preprocessor', preprocessor)])
+        
+        
+        # Apply Transformation to Train & Test
+        x_cols = [c for c in self.train_df.columns if c in (self.numeric_columns + self.categorical_columns)]
+        train_x = pipeline.fit_transform(self.train_df[x_cols])
+        test_x = pipeline.transform(self.test_df[x_cols])
+        valid_x = pipeline.transform(self.valid_df[x_cols])
+        
+        # Retrieve Feature Names from Preprocessor
+        feature_name_list = []
+        for i, transf in enumerate(preprocessor.transformers_):
+            last_transf_step = transf[1].steps[-1][1]
+            feature_name_list = feature_name_list + last_transf_step.feature_names
+        train_x = pd.DataFrame(train_x, columns = feature_name_list)
+        test_x = pd.DataFrame(test_x, columns = feature_name_list)
+        valid_x = pd.DataFrame(valid_x, columns = feature_name_list)
+        
+        # Remove Duplicate Columns
+        train_x = train_x.loc[:,~train_x.columns.duplicated()]
+        test_x = test_x.loc[:,~test_x.columns.duplicated()]
+        valid_x = valid_x.loc[:,~valid_x.columns.duplicated()]
+        return train_x, test_x, valid_x
     
     def save_pipeline(self):
         # Assertions

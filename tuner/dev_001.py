@@ -89,11 +89,13 @@ df = pd.read_csv(f'{config.folder_path}{config.train_file_name}')
 
 # Split into Test & Train
 train, test = sklearn.model_selection.train_test_split(df, test_size = 0.2, random_state = 912)
+test, valid = sklearn.model_selection.train_test_split(test, test_size = 0.5, random_state = 912)
 
 
 # Transform Predictor Features
 feature_pipeline = trans_mod.FeaturePipeline(train_df = train,
                                              test_df = test,
+                                             valid_df = valid,
                                              numeric_columns = config.contin_x_cols,
                                              categorical_columns = config.categ_x_cols,
                                              numeric_transformers = [trans_mod.MissingnessIndicatorTransformer(),
@@ -105,7 +107,7 @@ feature_pipeline = trans_mod.FeaturePipeline(train_df = train,
                                                                          trans_mod.ZeroVarianceTransformer()],
                                              pipeline_save_path = config.feature_pipeline_save_path)
 
-train_x, test_x  = feature_pipeline.process_train_test_features()
+train_x, test_x, valid_x  = feature_pipeline.process_train_test_valid_features()
 feature_pipeline.save_pipeline()
 
 
@@ -126,8 +128,7 @@ response_pipeline.save_pipeline()
 ### TO DO
 ######################################################################################################
 
-"""    
-# add process_train_test_valid_features
+"""
 # add process_train_test_valid_response
 # response pipeline for continuous response variable?
 # start xgbtuner
