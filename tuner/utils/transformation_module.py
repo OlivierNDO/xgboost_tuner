@@ -11,6 +11,14 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.feature_extraction.text import _VectorizerMixin
 from sklearn.feature_selection._base import SelectorMixin
 from sklearn.impute import SimpleImputer
+import sys
+
+
+### Import Modules
+######################################################################################################
+parent_directory = 'D:/xgboost_tuner/'
+sys.path.append(parent_directory)
+import tuner.utils.configuration as config
 
 
 
@@ -173,8 +181,9 @@ class PolynomialTransformer(BaseEstimator, TransformerMixin):
         1  20   6        400         36        216
         2  30   9        900         81        729
     """
-    def __init__(self, feature_power_dict):
+    def __init__(self, feature_power_dict, feature_names = []):
         self.feature_power_dict = feature_power_dict
+        self.feature_names = feature_names
         
     def __str__(self):
         return 'PolynomialTransformer'
@@ -185,19 +194,25 @@ class PolynomialTransformer(BaseEstimator, TransformerMixin):
     def transform(self, target):
         target_copy = target.copy()
         for c in target_copy.columns:
-            c_powers = range(2, self.feature_power_dict.get(c) + 1)
-            for cp in c_powers:
-                target_copy[f'{c}_power{cp}'] = [x ** cp for x in target_copy[c]]
-        return target_copy
+            if c in list(self.feature_power_dict.keys()):
+                c_powers = range(2, self.feature_power_dict.get(c) + 1)
+                for cp in c_powers:
+                    power_colname = f'{c}_power{cp}'
+                    target_copy[power_colname] = [x ** cp for x in target_copy[c]]
+        self.feature_names = list(target_copy.columns)
+        return target_copy[self.feature_names]
 
 
 
 class LogNormTransformer(BaseEstimator, TransformerMixin):
     """
-    Scale features to 0 -> 1 range before applying log(x+1) to each numeric value
+    Scale features to 0 -> 1 range before applying log(x+1) to each numeric value.
+    A new column will be created that modifies the original column name.
+    e.g. 'original_colname' -> 'original_colname_lognorm'
     """
-    def __init__(self, scaler = MinMaxScaler()):
+    def __init__(self, scaler = MinMaxScaler(), feature_names = []):
         self.scaler = scaler
+        self.feature_names = feature_names
         
     def __str__(self):
         return 'LogNormTransformer'
@@ -210,8 +225,10 @@ class LogNormTransformer(BaseEstimator, TransformerMixin):
         target_copy = target.copy()
         target_copy = pd.DataFrame(self.scaler.transform(target_copy), columns = target.columns)
         for c in target_copy.columns:
-            target_copy[c] = [np.log(x + 1) for x in target_copy[c]]
-        return target_copy
+            lognorm_colname = f'{c}_lognorm'
+            target_copy[lognorm_colname] = [np.log(x + 1) for x in target_copy[c]]
+        self.feature_names = list(target_copy.columns)
+        return target_copy[self.feature_names]
 
 
 
@@ -231,9 +248,9 @@ class InteractionTransformer(BaseEstimator, TransformerMixin):
         2  30   9  20      270      600
         
     """
-    def __init__(self, interaction_list):
+    def __init__(self, interaction_list, feature_names = []):
         self.interaction_list = interaction_list
-        
+        self.feature_names = feature_names
     def __str__(self):
         return 'InteractionTransformer'
 
@@ -243,8 +260,10 @@ class InteractionTransformer(BaseEstimator, TransformerMixin):
     def transform(self, target):
         target_copy = target.copy()       
         for intx in self.interaction_list:
-            target_copy[f'{intx[0]}_X_{intx[1]}'] = target_copy[intx[0]] * target_copy[intx[1]]
-        return target_copy
+            intx_colname = f'{intx[0]}_X_{intx[1]}'
+            target_copy[intx_colname] = target_copy[intx[0]] * target_copy[intx[1]]
+        self.feature_names = list(target_copy.columns)
+        return target_copy[self.feature_names]
     
 
 
@@ -274,13 +293,12 @@ class ResponseTransformer(BaseEstimator, TransformerMixin):
         return return_target
     
     
-    
 
 class ResponsePipeline:
     """
     Wrapper around ResponseTransformer class intended to transform
     pandas.Series response variable to a set of integers (if needed)
-    for xgboost modelling
+    for xgboost modeling
     """
     def __init__(self,
                  response_column : str,
@@ -315,8 +333,7 @@ class ResponsePipeline:
             pickle.dump(response_transformer, f)
             print(f'sklearn.Pipeline object saved to {self.pipeline_save_path}')
     
-    
-    
+
 
 class FeaturePipeline:
     """
@@ -327,15 +344,23 @@ class FeaturePipeline:
         > CategoricalTransformer()
         > ZeroVarianceTransformer()
         > CustomScalerTransformer()
+        > InteractionTransformer()
+        > ZeroVarianceTransformer()
+        
+    Note that any custom sklearn transformer class objects can be passed
+    to numeric_transformers and categorical_transformers objects
     """
     def __init__(self,
                  numeric_columns : list,
                  categorical_columns : list,
                  train_df : pd.DataFrame,
                  test_df = None,
+                 valid_df = None,
                  pipeline_save_path = None,
                  numeric_transformers = [MissingnessIndicatorTransformer(),
                                          ZeroVarianceTransformer(),
+                                         InteractionTransformer(interaction_list = config.interaction_cols),
+                                         PolynomialTransformer(feature_power_dict =  config.polynomial_col_dict),
                                          CustomScalerTransformer()],
                  categorical_transformers = [CategoricalTransformer(),
                                              ZeroVarianceTransformer()]):
@@ -343,6 +368,7 @@ class FeaturePipeline:
         self.categorical_columns = categorical_columns
         self.train_df = train_df
         self.test_df = test_df
+        self.valid_df = valid_df
         self.pipeline_save_path = pipeline_save_path
         self.numeric_transformers = numeric_transformers
         self.categorical_transformers = categorical_transformers
@@ -350,24 +376,10 @@ class FeaturePipeline:
     def __str__(self):
         return 'FeaturePipeline'
         
-    def make_numeric_transformer(self):
-        steps = [(transformer.__str__(), transformer) for transformer in self.numeric_transformers]
-        numeric_transformer = Pipeline(steps = steps)
-        return numeric_transformer
-    
-    def make_categorical_transformer(self):
-        steps = [(transformer.__str__(), transformer) for transformer in self.categorical_transformers]
-        categorical_transformer = Pipeline(steps = steps)
-        return categorical_transformer
-    
-    def get_pipeline(self):
-        numeric_transformer = self.make_numeric_transformer()
-        categorical_transformer = self.make_categorical_transformer()
-        preprocessor = ColumnTransformer(transformers=[('num', numeric_transformer, self.numeric_columns),
-                                                       ('cat', categorical_transformer, self.categorical_columns)],
-                                         remainder = 'passthrough')
-        pipeline = Pipeline(steps = [('preprocessor', preprocessor)])
-        return pipeline
+    def make_transformer_pipeline(self, transformer_list):
+        steps = [(transformer.__str__(), transformer) for transformer in transformer_list]
+        transformer_pipeline = Pipeline(steps = steps)
+        return transformer_pipeline
     
     def get_missing_train_cols(self):
         x_cols = self.numeric_columns + self.categorical_columns
@@ -386,12 +398,11 @@ class FeaturePipeline:
         assert len(self.get_missing_test_cols()) == 0, f"Columns missing from test set: {self.get_missing_test_cols()}"
         
         # Define Transformation Pipeline
-        numeric_transformer = self.make_numeric_transformer()
-        categorical_transformer = self.make_categorical_transformer()
-        preprocessor = ColumnTransformer(transformers=[('num', numeric_transformer, self.numeric_columns),
-                                                       ('cat', categorical_transformer, self.categorical_columns)],
+        preprocessor = ColumnTransformer(transformers=[('num', self.make_transformer_pipeline(transformer_list = self.numeric_transformers), self.numeric_columns),
+                                                       ('cat', self.make_transformer_pipeline(transformer_list = self.categorical_transformers), self.categorical_columns)],
                                          remainder = 'passthrough')
         pipeline = Pipeline(steps = [('preprocessor', preprocessor)])
+        
         
         # Apply Transformation to Train & Test
         x_cols = [c for c in self.train_df.columns if c in (self.numeric_columns + self.categorical_columns)]
@@ -406,7 +417,11 @@ class FeaturePipeline:
         train_x = pd.DataFrame(train_x, columns = feature_name_list)
         test_x = pd.DataFrame(test_x, columns = feature_name_list)
         
-        return train_x, test_x
+        # Remove Duplicate Columns
+        train_x = train_x.loc[:,~train_x.columns.duplicated()]
+        test_x = test_x.loc[:,~test_x.columns.duplicated()]
+        
+        return 
     
     def save_pipeline(self):
         # Assertions
@@ -414,10 +429,8 @@ class FeaturePipeline:
         assert self.pipeline_save_path is not None, 'Argument pipeline_save_path must be a string, not None type'
         
         # Define Transformation Pipeline
-        numeric_transformer = self.make_numeric_transformer()
-        categorical_transformer = self.make_categorical_transformer()
-        preprocessor = ColumnTransformer(transformers=[('num', numeric_transformer, self.numeric_columns),
-                                                       ('cat', categorical_transformer, self.categorical_columns)],
+        preprocessor = ColumnTransformer(transformers=[('num', self.make_transformer_pipeline(transformer_list = self.numeric_transformers), self.numeric_columns),
+                                                       ('cat', self.make_transformer_pipeline(transformer_list = self.categorical_transformers), self.categorical_columns)],
                                          remainder = 'passthrough')
         pipeline = Pipeline(steps = [('preprocessor', preprocessor)])
         
@@ -427,4 +440,36 @@ class FeaturePipeline:
         with open(self.pipeline_save_path, 'wb') as f:
             pickle.dump(pipeline, f)
             print(f'sklearn.Pipeline object saved to {self.pipeline_save_path}')
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

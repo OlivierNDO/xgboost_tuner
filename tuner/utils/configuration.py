@@ -5,10 +5,16 @@ id_col = 'FAKE_POLICY_NUMBERS'
 categ_x_cols = ['PDW_PACKAGE_POLICY_FLAG', 'RATE_STATE_NAME', 'TIER_CODE',
                         'NEW_RENEWAL_CODE', 'OCCUPATION']
 contin_x_cols = ['IBS_CREDIT_SCORE_NUMBER', 'ADDRESS_YEARS', 'EMPLOYED_YEARS',
-                        'POLICY_TERM_PREMIUM_AMOUNT', 'POLICY_TERM_NUMBER_OF_MONTHS',
-                        '0_3_MAJOR', '3_5_MAJOR', '0_3_MINOR', '3_5_MINOR', 'OPERATOR_AGE', 'VEH_ISO_LIAB_SYM']
+                 'POLICY_TERM_PREMIUM_AMOUNT', 'POLICY_TERM_NUMBER_OF_MONTHS',
+                 '0_3_MAJOR', '3_5_MAJOR', '0_3_MINOR', '3_5_MINOR', 'OPERATOR_AGE', 'VEH_ISO_LIAB_SYM']
 
 x_cols = categ_x_cols + contin_x_cols
+
+### Feature Transformation Configuration
+######################################################################################################
+interaction_cols = [('IBS_CREDIT_SCORE_NUMBER', 'OPERATOR_AGE')]
+
+polynomial_col_dict = {'OPERATOR_AGE' : 2}
 
 
 ### File Paths
