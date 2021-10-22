@@ -304,10 +304,12 @@ class ResponsePipeline:
                  response_column : str,
                  train_df : pd.DataFrame,
                  test_df = None,
+                 valid_df = None,
                  pipeline_save_path = None):
         self.response_column = response_column
         self.train_df = train_df
-        self.test_df = test_df 
+        self.test_df = test_df
+        self.valid_df = valid_df
         self.pipeline_save_path = pipeline_save_path
         
         
@@ -325,6 +327,20 @@ class ResponsePipeline:
         train_y = response_transformer.fit_transform(self.train_df[self.response_column])
         test_y = response_transformer.transform(self.test_df[self.response_column])
         return train_y, test_y
+    
+    def process_train_test_valid_response(self):
+        # Assertions
+        assert self.test_df is not None, 'Error: Parameter test_df cannot be None when calling method process_train_test_response()'
+        assert self.valid_df is not None, 'Error: Parameter valid_df cannot be None when calling method process_train_test_valid_response()'
+        assert self.response_column in self.train_df.columns, f"Column {self.respones_column} missing from training set"
+        assert self.response_column in self.test_df.columns, f"Column {self.respones_column} missing from test set"
+        
+        # Define & Apply Transformation Pipeline
+        response_transformer = ResponseTransformer()
+        train_y = response_transformer.fit_transform(self.train_df[self.response_column])
+        test_y = response_transformer.transform(self.test_df[self.response_column])
+        valid_y = response_transformer.transform(self.valid_df[self.response_column])
+        return train_y, test_y, valid_y
     
     def save_pipeline(self):
         response_transformer = ResponseTransformer()
