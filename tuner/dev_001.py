@@ -127,15 +127,6 @@ response_pipeline.save_pipeline()
 ######################################################################################################
 # By using a pipeline transformation during  each of K folds, cross validation results most accurately measure true out of sample performance
 
-param_dict = {'objective': ['binary:logistic'],
-              'booster': ['gbtree'],
-              'eval_metric': ['logloss'],
-              'eta' : list(np.linspace(0.005, 0.10, 5)),
-              'gamma' : [0, 1, 2, 4],
-              'max_depth' : [int(x) for x in np.linspace(4, 14, 5)],
-              'min_child_weight' : list(range(1, 10, 2)),
-              'subsample' : list(np.linspace(0.5, 1, 5)),
-              'colsample_bytree' : list(np.linspace(0.3, 1, 5))}
 
 
 
@@ -155,13 +146,32 @@ class XgboostClassificationTuner:
                  y : pd.DataFrame,
                  param_dict :  dict,
                  k_folds = 5,
+                 n_boost_rounds = 5000,
+                 early_stopping_rounds = 12,
                  param_sample_size = 20,
+                 numeric_columns = config.contin_x_cols,
+                 categorical_columns = config.categ_x_cols,
+                 y_column = config.y_col,
+                 numeric_transformers = [trans_mod.MissingnessIndicatorTransformer(),
+                                         trans_mod.ZeroVarianceTransformer(),
+                                         trans_mod.InteractionTransformer(interaction_list = config.interaction_cols),
+                                         trans_mod.PolynomialTransformer(feature_power_dict =  config.polynomial_col_dict),
+                                         trans_mod.CustomScalerTransformer()],
+                 categorical_transformers = [trans_mod.CategoricalTransformer(),
+                                             trans_mod.ZeroVarianceTransformer()],
                  kfold_results = []):
         self.x = x
         self.y = y
         self.param_dict = param_dict
         self.k_folds = k_folds
+        self.n_boost_rounds = n_boost_rounds
+        self.early_stopping_rounds = early_stopping_rounds
         self.param_sample_size = param_sample_size
+        self.numeric_columns = numeric_columns
+        self.categorical_columns = categorical_columns
+        self.y_column =  y_column
+        self.numeric_transformers = numeric_transformers
+        self.categorical_transformers = categorical_transformers
         self.kfold_results = kfold_results
         
     @staticmethod
@@ -229,6 +239,7 @@ class XgboostClassificationTuner:
     def run_kfold_cv(self):
         kfold_indices = self.get_kfold_indices()
         hyperparam_sample = self.get_hyperparameter_sample()
+        self.kfold_results = []
         
         for it, hp in enumerate(hyperparam_sample):
             for k in range(1, self.k_folds + 1):
@@ -243,30 +254,84 @@ class XgboostClassificationTuner:
                 self.print_timestamp_message(f'Starting Grid {it+1} of {self.param_sample_size}, Fold {k} ----- Train: {train_k_str}, Test: {test_k}, Validation: {valid_k}')
                 
                 # Create DataFrames for Train, Test Validation
-                train_x = self.x.iloc[self.unnest_list([kfi for i, kfi in enumerate(kfold_indices) if i in train_k])]
-                test_x = self.x.iloc[self.unnest_list([kfi for i, kfi in enumerate(kfold_indices) if i == test_k])]
-                valid_x = self.x.iloc[self.unnest_list([kfi for i, kfi in enumerate(kfold_indices) if i == valid_k])]
-    
+                train_x = self.x.iloc[self.unnest_list([kfi for i, kfi in enumerate(kfold_indices) if i + 1 in train_k])]
+                test_x = self.x.iloc[self.unnest_list([kfi for i, kfi in enumerate(kfold_indices) if i + 1 == test_k])]
+                valid_x = self.x.iloc[self.unnest_list([kfi for i, kfi in enumerate(kfold_indices) if i + 1 == valid_k])]
+                
+                train_y = self.y.iloc[self.unnest_list([kfi for i, kfi in enumerate(kfold_indices) if i + 1 in train_k])]
+                test_y = self.y.iloc[self.unnest_list([kfi for i, kfi in enumerate(kfold_indices) if i + 1 == test_k])]
+                valid_y = self.y.iloc[self.unnest_list([kfi for i, kfi in enumerate(kfold_indices) if i + 1 == valid_k])]
+                
+                # Process Features with Pipeline
+                feature_pipeline = trans_mod.FeaturePipeline(train_df = train_x,
+                                                             test_df = test_x,
+                                                             valid_df = valid_x,
+                                                             numeric_columns = self.numeric_columns,
+                                                             categorical_columns = self.categorical_columns,
+                                                             numeric_transformers = self.numeric_transformers,
+                                                             categorical_transformers = self.categorical_transformers)
 
-xgb_tuner = XgboostClassificationTuner(x = df[config.x_cols],
-                                       y = df[config.y_col],
+                train_x, test_x, valid_x  = feature_pipeline.process_train_test_valid_features()
+                #print(f'Train X: {train_x.shape}, Test X: {test_x.shape}, Valid X: {valid_x.shape}')
+                
+                # Process Response with Pipeline
+                response_pipeline = trans_mod.ResponsePipeline(train_df = train_y,
+                                                               test_df = test_y,
+                                                               valid_df = valid_y,
+                                                               response_column = self.y_column)
+
+                train_y, test_y, valid_y  = response_pipeline.process_train_test_valid_response()
+                #print(f'Train Y: {train_y.shape}, Test Y: {test_y.shape}, Valid Y: {valid_y.shape}')
+                
+                # Train Model
+                dat_train = xgb.DMatrix(train_x, label = train_y, enable_categorical = True)
+                dat_valid = xgb.DMatrix(valid_x, label = valid_y, enable_categorical = True)
+                watchlist = [(dat_train, 'train'), (dat_valid, 'valid')]
+                
+                xgb_trn = xgb.train(params = hp,
+                                    dtrain = dat_train,
+                                    num_boost_round = self.n_boost_rounds,
+                                    evals = watchlist,
+                                    early_stopping_rounds = self.early_stopping_rounds,
+                                    verbose_eval = False)
+                
+                # Evaluate Results on Test Set
+                pred = xgb_trn.predict(xgb.DMatrix(test_x, enable_categorical = True))
+                it_output = hp.copy()
+                it_output['k_fold'] = k
+                it_output['log_loss'] = sklearn.metrics.log_loss(test_y, pred)
+                it_output['accuracy'] = np.mean([int(np.round(p,0)) == test_y.iloc[i] for i, p  in enumerate(pred)])
+                self.kfold_results.append(it_output)
+        output_df = pd.DataFrame(self.kfold_results)
+        return output_df
+
+
+
+param_dict = {'objective': ['binary:logistic'],
+              'booster': ['gbtree'],
+              'eval_metric': ['logloss'],
+              'eta' : list(np.linspace(0.005, 0.10, 5)),
+              'gamma' : [0, 1, 2, 4],
+              'max_depth' : [int(x) for x in np.linspace(4, 14, 5)],
+              'min_child_weight' : list(range(1, 10, 2)),
+              'subsample' : list(np.linspace(0.5, 1, 5)),
+              'colsample_bytree' : list(np.linspace(0.3, 1, 5))}
+
+
+xgb_tuner = XgboostClassificationTuner(x = df[[c for c in df.columns if c != config.y_col]],
+                                       y = df[[config.y_col]],
                                        param_dict = param_dict,
-                                       param_sample_size = 20)
-
-
-#xgb_tuner.get_kfold_indices()
-
-xgb_tuner.get_hyperparameter_sample()
-
-xgb_tuner.run_kfold_cv()
-
-
+                                       k_folds = 5,
+                                       n_boost_rounds = 5000,
+                                       early_stopping_rounds = 12,
+                                       param_sample_size = 50,
+                                       numeric_columns = config.contin_x_cols,
+                                       categorical_columns = config.categ_x_cols,
+                                       y_column = config.y_col,)
 
 
 
-
-
-
+xgb_kfold_results = xgb_tuner.run_kfold_cv()
 
 
 """
@@ -287,6 +352,7 @@ performance plotting
 ######################################################################################################
 
 """
+# Assertion: if param sample > n param  combinations ... 
 # add process_train_test_valid_response
 # response pipeline for continuous response variable?
 # start xgbtuner
