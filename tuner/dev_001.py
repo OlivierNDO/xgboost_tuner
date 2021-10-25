@@ -329,11 +329,11 @@ class XgboostClassificationTuner:
         agg({'log_loss' : 'mean', 'accuracy' : 'mean'})
         
         # Subset Best Parameters
-        best_param_df = result_df_agg[result_df_agg.log_loss == min(temp_agg.log_loss)]
-        best_param_results = best_param_df[['log_loss', 'accuracy']].to_dict('records')
+        best_param_df = result_df_agg[result_df_agg.log_loss == min(result_df_agg.log_loss)]
+        best_param_results = best_param_df[['log_loss', 'accuracy']].to_dict('records')[0]
         best_params = best_param_df.\
         drop(['log_loss', 'accuracy'], axis = 1).\
-        to_dict('records')
+        to_dict('records')[0]
         return best_params, best_param_results
 
 
