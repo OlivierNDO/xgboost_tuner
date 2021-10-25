@@ -237,6 +237,12 @@ class XgboostClassificationTuner:
         return fold_positions
     
     def run_kfold_cv(self):
+        """
+        Run k-fold cross validation given supplied parameter set
+        and transformation pipelines
+        Returns:
+            pandas.DataFrame
+        """
         kfold_indices = self.get_kfold_indices()
         hyperparam_sample = self.get_hyperparameter_sample()
         self.kfold_results = []
@@ -304,6 +310,31 @@ class XgboostClassificationTuner:
                 self.kfold_results.append(it_output)
         output_df = pd.DataFrame(self.kfold_results)
         return output_df
+    
+    def get_best_params(self):
+        """
+        Get best hyperparameters and associated results from self.kfold_results
+        which is assigned values in the get_best_params() method
+        Returns:
+            dict, dict
+        """
+        assert len(self.kfold_results) > 0, 'Execute run_kfold_cv() method prior to get_best_params()'
+        result_df = pd.DataFrame(self.kfold_results)
+        group_cols = [c for c in result_df.columns if c not in ['log_loss', 'accuracy', 'k_fold']]
+        
+        # Aggregate Results Across Folds
+        result_df_agg = result_df.\
+        drop(['k_fold'], axis = 1).\
+        groupby(group_cols, as_index = False).\
+        agg({'log_loss' : 'mean', 'accuracy' : 'mean'})
+        
+        # Subset Best Parameters
+        best_param_df = result_df_agg[result_df_agg.log_loss == min(temp_agg.log_loss)]
+        best_param_results = best_param_df[['log_loss', 'accuracy']].to_dict('records')
+        best_params = best_param_df.\
+        drop(['log_loss', 'accuracy'], axis = 1).\
+        to_dict('records')
+        return best_params, best_param_results
 
 
 
@@ -324,17 +355,28 @@ xgb_tuner = XgboostClassificationTuner(x = df[[c for c in df.columns if c != con
                                        k_folds = 5,
                                        n_boost_rounds = 5000,
                                        early_stopping_rounds = 12,
-                                       param_sample_size = 50,
+                                       param_sample_size = 3,
                                        numeric_columns = config.contin_x_cols,
                                        categorical_columns = config.categ_x_cols,
-                                       y_column = config.y_col,)
+                                       y_column = config.y_col)
 
 
 
 xgb_kfold_results = xgb_tuner.run_kfold_cv()
+best_params, best_results = xgb_tuner.get_best_params()
+
+
 
 
 """
+
+kfold_results = {}
+xgb_tuner.run_kfold_cv() assigns values to kfold_results dict
+xgb_tuner.get_best_params() references kfold_results
+
+
+
+
 sample hyperparameter space
 create partitions
 for loop  with:
