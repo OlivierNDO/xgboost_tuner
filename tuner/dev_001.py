@@ -400,6 +400,7 @@ performance plotting
 # start xgbtuner
 # write unit tests
 # Work on docstrings
+# Create large repo of tabular classification datasets, benchmark and catalogue best parameters
 
 
 """
