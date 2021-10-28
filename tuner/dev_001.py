@@ -213,16 +213,38 @@ class XgboostClassificationTuner:
         print(f'{ts_string}: {message}')
         
         
-    def get_hyperparameter_sample(self):
+    @staticmethod
+    def get_balanced_sample_weights(y_train : pd.Series):
+        """
+        Create array of weights to adjust for class imbalance
+        Args:
+            y_train: training set response variable (list, numpy array, or pandas.Series)
+        """
+        train_class_counts = dict((x, len([z for z in y_train if z == x])) for x in set(y_train))
+        max_class = max(train_class_counts.values())
+        class_weights = [max_class / x for x in train_class_counts.values()]
+        class_weight_dict = dict(zip([i for i in train_class_counts.keys()], class_weights))
+        sample_weights = [class_weight_dict.get(x) for x in y_train]
+        return sample_weights
+        
+        
+    def get_hyperparameter_sample(self, print_sample = True):
         """
         Generate all possible hyperparameter combinations
         from self.param_dict and return a random sample
         of size self.param_sample_size, returning  a list
         of dictionaries
+        Args:
+            print_sample (bool): if True, print percentage of parameter space sampled
         """
         param_combinations = list(itertools.product(*self.param_dict.values()))
         param_sample = random.sample(param_combinations, self.param_sample_size)
         param_sample_dict_list = [dict(zip(self.param_dict.keys(), list(ps))) for ps in param_sample]
+        if print_sample:
+            percent_sample = self.param_sample_size / len(param_combinations)
+            percent_sample_label = f'{round(percent_sample * 100,3)}%'
+            self.print_timestamp_message(f'Sampling {self.param_sample_size} of {len(param_combinations)} \
+                                         ({percent_sample_label}) parameter combinations')
         return param_sample_dict_list
     
     
@@ -278,7 +300,6 @@ class XgboostClassificationTuner:
                                                              categorical_transformers = self.categorical_transformers)
 
                 train_x, test_x, valid_x  = feature_pipeline.process_train_test_valid_features()
-                #print(f'Train X: {train_x.shape}, Test X: {test_x.shape}, Valid X: {valid_x.shape}')
                 
                 # Process Response with Pipeline
                 response_pipeline = trans_mod.ResponsePipeline(train_df = train_y,
@@ -287,10 +308,10 @@ class XgboostClassificationTuner:
                                                                response_column = self.y_column)
 
                 train_y, test_y, valid_y  = response_pipeline.process_train_test_valid_response()
-                #print(f'Train Y: {train_y.shape}, Test Y: {test_y.shape}, Valid Y: {valid_y.shape}')
                 
                 # Train Model
-                dat_train = xgb.DMatrix(train_x, label = train_y, enable_categorical = True)
+                class_weight_vec = self.get_balanced_sample_weights(train_y.iloc[:, 0])
+                dat_train = xgb.DMatrix(train_x, label = train_y, enable_categorical = True, weight = class_weight_vec)
                 dat_valid = xgb.DMatrix(valid_x, label = valid_y, enable_categorical = True)
                 watchlist = [(dat_train, 'train'), (dat_valid, 'valid')]
                 
@@ -341,12 +362,12 @@ class XgboostClassificationTuner:
 param_dict = {'objective': ['binary:logistic'],
               'booster': ['gbtree'],
               'eval_metric': ['logloss'],
-              'eta' : list(np.linspace(0.005, 0.10, 5)),
+              'eta' : list(np.linspace(0.005, 0.06, 5)),
               'gamma' : [0, 1, 2, 4],
               'max_depth' : [int(x) for x in np.linspace(4, 14, 5)],
-              'min_child_weight' : list(range(1, 10, 2)),
-              'subsample' : list(np.linspace(0.5, 1, 5)),
-              'colsample_bytree' : list(np.linspace(0.3, 1, 5))}
+              'min_child_weight' : list(range(1, 10, 3)),
+              'subsample' : list(np.linspace(0.5, 1, 4)),
+              'colsample_bytree' : list(np.linspace(0.3, 1, 4))}
 
 
 xgb_tuner = XgboostClassificationTuner(x = df[[c for c in df.columns if c != config.y_col]],
@@ -355,15 +376,15 @@ xgb_tuner = XgboostClassificationTuner(x = df[[c for c in df.columns if c != con
                                        k_folds = 5,
                                        n_boost_rounds = 5000,
                                        early_stopping_rounds = 12,
-                                       param_sample_size = 3,
+                                       param_sample_size = 100,
                                        numeric_columns = config.contin_x_cols,
                                        categorical_columns = config.categ_x_cols,
                                        y_column = config.y_col)
 
 
-
 xgb_kfold_results = xgb_tuner.run_kfold_cv()
 best_params, best_results = xgb_tuner.get_best_params()
+
 
 
 
