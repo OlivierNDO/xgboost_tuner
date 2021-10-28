@@ -136,7 +136,10 @@ class XgboostClassificationTuner:
     hyperparameter space  using train, test, and validation sets.
     Each k-fold iteration assigns 1 fold to test, 1 fold to validation,
     and remaining folds to train. A custom sklearn Pipeline object
-    is required to most accurately measure true out of sample performance
+    is required to most accurately measure true out of sample performance.
+    RandomizedSearchCV and similar cross validation frameworks typically
+    do not have functionality to customize each split of data with
+    transformation pipelines, class weight parameters, and early stopping.
     """
     
     
@@ -376,7 +379,7 @@ xgb_tuner = XgboostClassificationTuner(x = df[[c for c in df.columns if c != con
                                        k_folds = 5,
                                        n_boost_rounds = 5000,
                                        early_stopping_rounds = 12,
-                                       param_sample_size = 100,
+                                       param_sample_size = 200,
                                        numeric_columns = config.contin_x_cols,
                                        categorical_columns = config.categ_x_cols,
                                        y_column = config.y_col)
@@ -385,11 +388,36 @@ xgb_tuner = XgboostClassificationTuner(x = df[[c for c in df.columns if c != con
 xgb_kfold_results = xgb_tuner.run_kfold_cv()
 best_params, best_results = xgb_tuner.get_best_params()
 
+xgb_kfold_results.columns
+sns.boxplot(x =  'eta', y = 'log_loss', data = xgb_kfold_results)
+plt.show()
 
+sns.boxplot(x =  'gamma', y = 'log_loss', data = xgb_kfold_results)
+plt.show()
+
+sns.boxplot(x =  'max_depth', y = 'log_loss', data = xgb_kfold_results)
+plt.show()
+
+sns.boxplot(x =  'min_child_weight', y = 'log_loss', data = xgb_kfold_results)
+plt.show()
+
+sns.boxplot(x =  'colsample_bytree', y = 'log_loss', data = xgb_kfold_results)
+plt.show()
+
+
+plt.hist(xgb_kfold_results.log_loss, bins = 60)
+plt.show()
+
+
+plt.hist(xgb_kfold_results.accuracy, bins = 60)
+plt.show()
 
 
 
 """
+start time: 11:02:42
+ending  ti: 13:02:16
+
 
 kfold_results = {}
 xgb_tuner.run_kfold_cv() assigns values to kfold_results dict
