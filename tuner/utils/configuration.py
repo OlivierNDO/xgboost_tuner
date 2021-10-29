@@ -40,7 +40,7 @@ train_file_name = 'retention_sample.csv'
 
 ### Crossvalidation & Hyperparameter Configuration
 ######################################################################################################
-crossval_config = {'k_folds' : 5, 'n_boost_rounds' : 5000, 'early_stopping_rounds' : 12, 'param_sample_size' : 2}
+crossval_config = {'k_folds' : 5, 'n_boost_rounds' : 5000, 'early_stopping_rounds' : 12, 'param_sample_size' : 400}
 
 
 
@@ -69,7 +69,7 @@ retention_dataset_dict = {'y_col' : 'RETAINED',
                           'hyperparam_config' : {'objective': ['binary:logistic'],
                                                'booster': ['gbtree'],
                                                'eval_metric': ['logloss'],
-                                               'eta' : list(np.linspace(0.005, 0.06, 5)),
+                                               'eta' : list(np.linspace(0.005, 0.1, 5)),
                                                'gamma' : [0, 1, 2, 4],
                                                'max_depth' : [int(x) for x in np.linspace(4, 14, 5)],
                                                'min_child_weight' : list(range(1, 10, 3)),
