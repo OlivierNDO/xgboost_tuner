@@ -1,3 +1,39 @@
+"""
+This is a collection of custom sklearn transformation classes and utilities for combining them
+into cohesive transformation pipelines
+
+Example usage of this module:
+    import tuner.utils.transformation_module as trans_mod
+    
+    # Read Data
+    df, train, test, valid = helper.load_dataset_from_config(config_dict = use_data)
+    
+    # Transform Predictor Features
+    feature_pipeline = trans_mod.FeaturePipeline(train_df = train,
+                                                 test_df = test,
+                                                 valid_df = valid,
+                                                 numeric_columns = use_data.get('contin_x_cols'),
+                                                 categorical_columns = use_data.get('categ_x_cols'),
+                                                 numeric_transformers = [trans_mod.MissingnessIndicatorTransformer(),
+                                                                         trans_mod.ZeroVarianceTransformer(),
+                                                                         trans_mod.InteractionTransformer(interaction_list = use_data.get('interaction_cols')),
+                                                                         trans_mod.PolynomialTransformer(feature_power_dict =  use_data.get('polynomial_col_dict')),
+                                                                         trans_mod.CustomScalerTransformer()],
+                                                 categorical_transformers = [trans_mod.CategoricalTransformer(),
+                                                                             trans_mod.ZeroVarianceTransformer()])
+    
+    train_x, test_x, valid_x  = feature_pipeline.process_train_test_valid_features()
+    
+    # Transform Response Variable
+    response_pipeline = trans_mod.ResponsePipeline(train_df = train, test_df = test,
+                                                   valid_df = valid, response_column = use_data.get('y_col'))
+    
+    train_y, test_y, valid_y  = response_pipeline.process_train_test_valid_response()
+
+"""
+
+
+
 ### Import Packages
 ######################################################################################################
 import numpy as np
