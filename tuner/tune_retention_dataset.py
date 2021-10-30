@@ -35,13 +35,12 @@ import tuner.utils.tuner as tuner
 
 ### Dataset Dictionary
 ######################################################################################################
-use_data = config.jun2021_playg_dataset_dict
+use_data = config.retention_dataset_dict
 
 
 ### Read Dataset
 ######################################################################################################
 df, train, test, valid = helper.load_dataset_from_config(config_dict = use_data)
-
 
 
 ### XGBoost Hyperparameter Tuning with Early Stopping & Pipeline Transformations
@@ -62,13 +61,11 @@ xgb_tuner = tuner.XgboostClassificationTuner(x = df[use_data.get('x_cols')],
                                              y_column = use_data.get('y_col'),
                                              numeric_transformers = [trans_mod.MissingnessIndicatorTransformer(),
                                                                      trans_mod.ZeroVarianceTransformer(),
+                                                                     trans_mod.InteractionTransformer(interaction_list = use_data.get('interaction_cols')),
+                                                                     trans_mod.PolynomialTransformer(feature_power_dict =  use_data.get('polynomial_col_dict')),
                                                                      trans_mod.CustomScalerTransformer()],
                                              categorical_transformers = [trans_mod.CategoricalTransformer(),
                                                                          trans_mod.ZeroVarianceTransformer()])
 
 xgb_kfold_results = xgb_tuner.run_kfold_cv()
 xgb_tuner.save_results()
-
-
-
-

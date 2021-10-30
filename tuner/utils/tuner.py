@@ -267,6 +267,11 @@ class XgboostClassificationTuner:
                 dat_valid = xgb.DMatrix(valid_x, label = valid_y, enable_categorical = True)
                 watchlist = [(dat_train, 'train'), (dat_valid, 'valid')]
                 
+                # Remove num_class for binary classification
+                if 'num_class' in list(hp.keys()):
+                    if hp.get('num_class') == 2:
+                        del hp['num_class']
+                
                 xgb_trn = xgb.train(params = hp,
                                     dtrain = dat_train,
                                     num_boost_round = self.n_boost_rounds,
@@ -277,9 +282,16 @@ class XgboostClassificationTuner:
                 # Evaluate Results on Test Set
                 pred = xgb_trn.predict(xgb.DMatrix(test_x, enable_categorical = True))
                 it_output = hp.copy()
+                y_class_labels = list(np.unique(list(train_y.iloc[:, 0]) + list(valid_y.iloc[:, 0]) + list(test_y.iloc[:, 0])))
+                it_output['log_loss'] = sklearn.metrics.log_loss(test_y, pred, labels = y_class_labels)
                 it_output['k_fold'] = k
-                it_output['log_loss'] = sklearn.metrics.log_loss(test_y, pred)
-                it_output['accuracy'] = np.mean([int(np.round(p,0)) == test_y.iloc[i] for i, p  in enumerate(pred)])
+                if 'num_class' in list(hp.keys()):
+                    class_pred = list(itertools.chain.from_iterable([[i for i, pr in enumerate(pred_arr) if pr == max(pred_arr)]  for pred_arr in pred]))
+                    it_output['accuracy'] = np.mean([int(np.round(p,0)) == test_y.iloc[i] for i, p  in enumerate(class_pred)])
+                else:
+                    it_output['accuracy'] = np.mean([int(np.round(p,0)) == test_y.iloc[i] for i, p  in enumerate(pred)])
+                
+                
                 self.kfold_results.append(it_output)
         output_df = pd.DataFrame(self.kfold_results)
         return output_df
