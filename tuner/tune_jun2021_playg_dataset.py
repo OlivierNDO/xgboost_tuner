@@ -70,6 +70,6 @@ xgb_kfold_results = xgb_tuner.run_kfold_cv()
 xgb_tuner.save_results()
 
 
-
+# TO DO: update xgboost to version with gpu support
 
 
