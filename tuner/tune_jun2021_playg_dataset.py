@@ -57,7 +57,7 @@ xgb_tuner = tuner.XgboostClassificationTuner(x = df[use_data.get('x_cols')],
                                              k_folds = config.crossval_config.get('k_folds'),
                                              n_boost_rounds = config.crossval_config.get('n_boost_rounds'),
                                              early_stopping_rounds = config.crossval_config.get('early_stopping_rounds'),
-                                             param_sample_size = 30,
+                                             param_sample_size = 5,
                                              numeric_columns = use_data.get('contin_x_cols'),
                                              categorical_columns = use_data.get('categ_x_cols'),
                                              y_column = use_data.get('y_col'),
@@ -67,11 +67,16 @@ xgb_tuner = tuner.XgboostClassificationTuner(x = df[use_data.get('x_cols')],
                                              categorical_transformers = [trans_mod.CategoricalTransformer(),
                                                                          trans_mod.ZeroVarianceTransformer()])
 
+
+#xgb_tuner.param_dict.get('num_class')[0]
+
+
 xgb_kfold_results = xgb_tuner.run_kfold_cv()
 xgb_tuner.save_results()
 
 
 # TO DO: update xgboost to version with gpu support
+# TO DO: create unit test input files for multiclass and binary predictions
 
 """
 Traceback (most recent call last):

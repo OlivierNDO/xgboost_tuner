@@ -285,7 +285,8 @@ class XgboostClassificationTuner:
                 y_class_labels = list(np.unique(list(train_y.iloc[:, 0]) + list(valid_y.iloc[:, 0]) + list(test_y.iloc[:, 0])))
                 it_output['log_loss'] = sklearn.metrics.log_loss(test_y, pred, labels = y_class_labels)
                 it_output['k_fold'] = k
-                if 'num_class' in list(hp.keys()):
+                
+                if self.param_dict.get('num_class')[0] > 2:
                     class_pred = list(itertools.chain.from_iterable([[i for i, pr in enumerate(pred_arr) if pr == max(pred_arr)]  for pred_arr in pred]))
                     it_output['accuracy'] = np.mean([int(np.round(p,0)) == test_y.iloc[i] for i, p  in enumerate(class_pred)])
                 else:
