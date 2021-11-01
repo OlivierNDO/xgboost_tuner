@@ -57,7 +57,7 @@ xgb_tuner = tuner.XgboostClassificationTuner(x = df[use_data.get('x_cols')],
                                              k_folds = config.crossval_config.get('k_folds'),
                                              n_boost_rounds = config.crossval_config.get('n_boost_rounds'),
                                              early_stopping_rounds = config.crossval_config.get('early_stopping_rounds'),
-                                             param_sample_size = 3,
+                                             param_sample_size = 30,
                                              numeric_columns = use_data.get('contin_x_cols'),
                                              categorical_columns = use_data.get('categ_x_cols'),
                                              y_column = use_data.get('y_col'),
@@ -73,4 +73,38 @@ xgb_tuner.save_results()
 
 # TO DO: update xgboost to version with gpu support
 
+"""
+Traceback (most recent call last):
 
+  File "<ipython-input-2-a52247a02ab9>", line 19, in <module>
+    xgb_kfold_results = xgb_tuner.run_kfold_cv()
+
+  File "D:/xgboost_tuner\tuner\utils\tuner.py", line 290, in run_kfold_cv
+    it_output['accuracy'] = np.mean([int(np.round(p,0)) == test_y.iloc[i] for i, p  in enumerate(class_pred)])
+
+  File "D:/xgboost_tuner\tuner\utils\tuner.py", line 290, in <listcomp>
+    it_output['accuracy'] = np.mean([int(np.round(p,0)) == test_y.iloc[i] for i, p  in enumerate(class_pred)])
+
+  File "C:\Users\user\AppData\Roaming\Python\Python37\site-packages\pandas\core\indexing.py", line 895, in __getitem__
+    return self._getitem_axis(maybe_callable, axis=axis)
+
+  File "C:\Users\user\AppData\Roaming\Python\Python37\site-packages\pandas\core\indexing.py", line 1501, in _getitem_axis
+    self._validate_integer(key, axis)
+
+  File "C:\Users\user\AppData\Roaming\Python\Python37\site-packages\pandas\core\indexing.py", line 1444, in _validate_integer
+    raise IndexError("single positional indexer is out-of-bounds")
+
+IndexError: single positional indexer is out-of-bounds
+
+
+
+
+
+
+
+
+
+
+
+
+"""
